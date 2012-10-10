@@ -33,7 +33,7 @@ NSString *const AFS3AccessPolicyBucketOwnerRead = @"bucket-owner-read";
 NSString *const AFIS3AccessPolicyBucketOwnerFullControl = @"bucket-owner-full-control";
 
 @interface AFS3Client()
-- (void)buildRequestHeadersForBucket:(NSString *)bucket key:(NSString *)key mimeType:(NSString *)mimeType contentMD5:(NSString *)contentMD5;
+- (void)buildRequestHeadersForBucket:(NSString *)bucket key:(NSString *)key;
 - (NSMutableDictionary *)S3Headers;
 @end
 
@@ -76,7 +76,7 @@ NSString *const AFIS3AccessPolicyBucketOwnerFullControl = @"bucket-owner-full-co
 {
 	NSString *path = [NSString stringWithFormat:@"%@%@", bucket, key];
 
-	[self buildRequestHeadersForBucket:bucket key:key mimeType:@"" contentMD5:@""];
+	[self buildRequestHeadersForBucket:bucket key:key];
 	[self putPath:path data:data success:^(AFHTTPRequestOperation *operation, id responseObject) {
 		if (success) {
 			success(operation, responseObject);
@@ -110,7 +110,6 @@ NSString *const AFIS3AccessPolicyBucketOwnerFullControl = @"bucket-owner-full-co
 	return request;
 }
 
-#pragma mark - Private Methods
 
 - (void)buildRequestHeadersForBucket:(NSString *)bucket key:(NSString *)key mimeType:(NSString *)mimeType contentMD5:(NSString *)contentMD5 {
 	NSString *dateString = [[AFS3Client S3RequestDateFormatter] stringFromDate:[NSDate date]];
@@ -136,8 +135,32 @@ NSString *const AFIS3AccessPolicyBucketOwnerFullControl = @"bucket-owner-full-co
 	NSString *authorizationString = [NSString stringWithFormat:@"AWS %@:%@", _accessKey, signature];
 	[self setDefaultHeader:@"Authorization" value:authorizationString];
 }
-	 
-	 
+
+#pragma mark - Private Methods
+
+- (void)buildRequestHeadersForBucket:(NSString *)bucket key:(NSString *)key {
+	NSString *dateString = [[AFS3Client S3RequestDateFormatter] stringFromDate:[NSDate date]];
+	[self setDefaultHeader:@"Date" value:dateString];
+
+	// Ensure our formatted string doesn't use '(null)' for the empty path
+	NSString *canonicalizedResource = [NSString stringWithFormat:@"/%@%@", bucket,[AFS3Client stringByURLEncodingForS3Path:key]];;
+
+	// Add a header for the access policy if one was set, otherwise we won't add one (and S3 will default to private)
+	NSMutableDictionary *amzHeaders = [self S3Headers];
+
+	NSString *canonicalizedAmzHeaders = @"";
+	for (NSString *header in [[amzHeaders allKeys] sortedArrayUsingSelector:@selector(compare:)]) {
+		canonicalizedAmzHeaders = [NSString stringWithFormat:@"%@%@:%@\n",canonicalizedAmzHeaders,[header lowercaseString],[amzHeaders objectForKey:header]];
+		[self setDefaultHeader:header value:[amzHeaders objectForKey:header]];
+	}
+	// Put it all together
+	NSString *stringToSign = [NSString stringWithFormat:@"%@\n\n\n%@\n%@%@", @"PUT", dateString, canonicalizedAmzHeaders, canonicalizedResource];
+	NSString *signature = [AFS3Client base64forData:[AFS3Client HMACSHA1withKey:_secretAccessKey forString:stringToSign]];
+	NSString *authorizationString = [NSString stringWithFormat:@"AWS %@:%@", _accessKey, signature];
+	[self setDefaultHeader:@"Authorization" value:authorizationString];
+}
+
+
 - (NSMutableDictionary *)S3Headers {
 	NSMutableDictionary *headers = [NSMutableDictionary dictionary];
 	if (_accessPolicy) {

@@ -122,6 +122,11 @@ extern NSString *const AFIS3AccessPolicyBucketOwnerFullControl;
 																			data:(NSData *)data;
 
 
+- (void)buildRequestHeadersForBucket:(NSString *)bucket
+								 key:(NSString *)key
+							mimeType:(NSString *)mimeType
+						  contentMD5:(NSString *)contentMD5;
+
 /**
  Helper fuctions for creating the signature for S3 Requests
  */
