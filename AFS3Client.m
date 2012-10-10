@@ -33,7 +33,7 @@ NSString *const AFS3AccessPolicyBucketOwnerRead = @"bucket-owner-read";
 NSString *const AFIS3AccessPolicyBucketOwnerFullControl = @"bucket-owner-full-control";
 
 @interface AFS3Client()
-- (void)buildRequestHeadersForBucket:(NSString *)bucket key:(NSString *)key;
+- (void)buildRequestHeadersForBucket:(NSString *)bucket key:(NSString *)key mimeType:(NSString *)mimeType contentMD5:(NSString *)contentMD5;
 - (NSMutableDictionary *)S3Headers;
 @end
 
@@ -75,8 +75,8 @@ NSString *const AFIS3AccessPolicyBucketOwnerFullControl = @"bucket-owner-full-co
 								 failure:(void (^)(AFHTTPRequestOperation *operation, NSError *error))failure
 {
 	NSString *path = [NSString stringWithFormat:@"%@%@", bucket, key];
-	
-	[self buildRequestHeadersForBucket:bucket key:key];
+
+	[self buildRequestHeadersForBucket:bucket key:key mimeType:@"" contentMD5:@""];
 	[self putPath:path data:data success:^(AFHTTPRequestOperation *operation, id responseObject) {
 		if (success) {
 			success(operation, responseObject);
@@ -112,10 +112,13 @@ NSString *const AFIS3AccessPolicyBucketOwnerFullControl = @"bucket-owner-full-co
 
 #pragma mark - Private Methods
 
-- (void)buildRequestHeadersForBucket:(NSString *)bucket key:(NSString *)key {
+- (void)buildRequestHeadersForBucket:(NSString *)bucket key:(NSString *)key mimeType:(NSString *)mimeType contentMD5:(NSString *)contentMD5 {
 	NSString *dateString = [[AFS3Client S3RequestDateFormatter] stringFromDate:[NSDate date]];
 	[self setDefaultHeader:@"Date" value:dateString];
-	
+
+	[self setDefaultHeader:@"Content-Type" value:mimeType];
+	[self setDefaultHeader:@"Content-Md5" value:contentMD5];
+
 	// Ensure our formatted string doesn't use '(null)' for the empty path
 	NSString *canonicalizedResource = [NSString stringWithFormat:@"/%@%@", bucket,[AFS3Client stringByURLEncodingForS3Path:key]];;
 	
@@ -128,7 +131,7 @@ NSString *const AFIS3AccessPolicyBucketOwnerFullControl = @"bucket-owner-full-co
 		[self setDefaultHeader:header value:[amzHeaders objectForKey:header]];
 	}
 	// Put it all together
-	NSString *stringToSign = [NSString stringWithFormat:@"%@\n\n\n%@\n%@%@", @"PUT", dateString, canonicalizedAmzHeaders, canonicalizedResource];
+	NSString *stringToSign = [NSString stringWithFormat:@"%@\n%@\n%@\n%@\n%@%@", @"PUT", contentMD5, mimeType, dateString, canonicalizedAmzHeaders, canonicalizedResource];
 	NSString *signature = [AFS3Client base64forData:[AFS3Client HMACSHA1withKey:_secretAccessKey forString:stringToSign]];
 	NSString *authorizationString = [NSString stringWithFormat:@"AWS %@:%@", _accessKey, signature];
 	[self setDefaultHeader:@"Authorization" value:authorizationString];
